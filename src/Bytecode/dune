@@ -1,0 +1,6 @@
+(include_subdirs qualified)
+(rocq.theory
+ (name Bytecode)
+ (synopsis "Formalisation of Bytecode to x86")
+ (modules (:standard))
+ (theories Stdlib))
