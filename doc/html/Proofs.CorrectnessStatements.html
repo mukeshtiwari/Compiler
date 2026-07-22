@@ -1,0 +1,98 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link href="coqdoc.css" rel="stylesheet" type="text/css" />
+<title>Proofs.CorrectnessStatements</title>
+</head>
+
+<body>
+
+<div id="page">
+
+<div id="header">
+</div>
+
+<div id="main">
+
+<h1 class="libtitle">Library Proofs.CorrectnessStatements</h1>
+
+<div class="code">
+<span class="id" title="keyword">From</span> <span class="id" title="var">Bytecode</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Bytecode</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">Assembly</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Assembly</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">Proofs</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="keyword">Proof</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">compcert.common</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">AST</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">compcert.common</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Values</span> <span class="id" title="var">Memory</span> <span class="id" title="var">Globalenvs</span> <span class="id" title="var">Events</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">compcert.lib</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Integers</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">compcert.x86</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Asm</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">Stdlib</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">List</span> <span class="id" title="var">ZArith</span> <span class="id" title="var">PeanoNat</span><br/>
+<span class="id" title="var">Relation_Operators</span> <span class="id" title="var">Utf8</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Import</span> <span class="id" title="var">ListNotations</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Section</span> <span class="id" title="var">GenericCorrectnessStatements</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Statement-only file for generic compiler correctness.
+      This file intentionally contains no Rocq proof terms.
+
+<div class="paragraph"> </div>
+
+  
+</div>
+<div class="code">
+
+<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Variables</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">initial_target_state</span> : <span class="id" title="var">function</span> → <span class="id" title="var">list</span> <span class="id" title="var">word</span> → <span class="id" title="var">list</span> <span class="id" title="var">word</span> → <span class="id" title="var">Asm.state</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">target_outputs</span> : <span class="id" title="var">Asm.state</span> → <span class="id" title="var">list</span> <span class="id" title="var">word</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">target_star</span> : <span class="id" title="var">Asm.state</span> → <span class="id" title="var">Asm.state</span> → <span class="id" title="keyword">Prop</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">target_final</span> : <span class="id" title="var">Asm.state</span> → <span class="id" title="keyword">Prop</span>).<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+This theorem states that for any parsed bytecode program <span class="inlinecode"><span class="id" title="var">p</span></span>,
+      any source configuration <span class="inlinecode"><span class="id" title="var">cfg</span></span>, and any amount of fuel <span class="inlinecode"><span class="id" title="var">fuel</span></span>,
+      if the source machine runs for <span class="inlinecode"><span class="id" title="var">fuel</span></span> steps and ends in <span class="inlinecode"><span class="id" title="var">cfg'</span></span>,
+      then the compiled x86‑64 code, started with the input and output
+      vectors extracted from <span class="inlinecode"><span class="id" title="var">cfg</span></span>, will simulate that execution
+      (in zero or more target steps) to some target state <span class="inlinecode"><span class="id" title="var">t'</span></span> whose
+      output vector equals the source's final output vector.
+    
+</div>
+<div class="code">
+&nbsp;&nbsp;<span class="id" title="keyword">Theorem</span> <span class="id" title="var">compiler_correct</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">bytes</span> : <span class="id" title="var">list</span> <span class="id" title="var">Bytecode.byte</span>) (<span class="id" title="var">fuel</span> : <span class="id" title="var">nat</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">p</span> : <span class="id" title="var">Bytecode.program</span>) (<span class="id" title="var">cfg</span> <span class="id" title="var">cfg'</span> : <span class="id" title="var">configuration</span>) : <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Bytecode.parse</span> <span class="id" title="var">bytes</span> = <span class="id" title="var">Bytecode.Parsed</span> <span class="id" title="var">p</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">run</span> <span class="id" title="var">fuel</span> <span class="id" title="var">p</span> <span class="id" title="var">cfg</span> = <span class="id" title="var">cfg'</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">∃</span> (<span class="id" title="var">t'</span> : <span class="id" title="var">Asm.state</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_star</span> (<span class="id" title="var">initial_target_state</span> (<span class="id" title="var">transl_program</span> <span class="id" title="var">p</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">source_inputs</span> (<span class="id" title="var">configuration_to_state</span> <span class="id" title="var">cfg</span>))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">source_outputs</span> (<span class="id" title="var">configuration_to_state</span> <span class="id" title="var">cfg</span>))) <span class="id" title="var">t'</span> ∧<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_outputs</span> <span class="id" title="var">t'</span> = <span class="id" title="var">source_outputs</span> (<span class="id" title="var">configuration_to_state</span> <span class="id" title="var">cfg'</span>).<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Proof</span>. <span class="id" title="var">Admitted</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">End</span> <span class="id" title="var">GenericCorrectnessStatements</span>.<br/>
+</div>
+</div>
+
+<div id="footer">
+<hr/><a href="index.html">Index</a><hr/>This page has been generated by <a href="http://rocq-prover.org/">coqdoc</a>
+</div>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,319 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link href="coqdoc.css" rel="stylesheet" type="text/css" />
+<title>Proofs.Proof</title>
+</head>
+
+<body>
+
+<div id="page">
+
+<div id="header">
+</div>
+
+<div id="main">
+
+<h1 class="libtitle">Library Proofs.Proof</h1>
+
+<div class="code">
+<span class="id" title="keyword">From</span> <span class="id" title="var">Bytecode</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Bytecode</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">Assembly</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Assembly</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">compcert.common</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">AST</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">compcert.common</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Values</span> <span class="id" title="var">Memory</span> <span class="id" title="var">Globalenvs</span> <span class="id" title="var">Events</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">compcert.lib</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Integers</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">compcert.x86</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Asm</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">Stdlib</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">List</span> <span class="id" title="var">ZArith</span> <span class="id" title="var">PeanoNat</span><br/>
+<span class="id" title="var">Relation_Operators</span> <span class="id" title="var">Utf8</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Import</span> <span class="id" title="var">ListNotations</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Section</span> <span class="id" title="var">GenericCorrectness</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+This section is parameterized by an abstract target machine semantics.
+      The goal is to prove a reusable compiler-correctness statement that does
+      not depend on one concrete small-step relation from CompCert. 
+</div>
+<div class="code">
+&nbsp;&nbsp;<span class="id" title="keyword">Variable</span> (<span class="id" title="var">ge</span> : <span class="id" title="var">Genv.t</span> <span class="id" title="var">Asm.fundef</span> <span class="id" title="var">unit</span>).<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Abstract target-side interface used by the proof:
+<ul class="doclist">
+<li> <span class="inlinecode"><span class="id" title="var">initial_target_state</span></span> builds the initial machine state for a compiled
+        function with given inputs and initial outputs;
+
+</li>
+<li> <span class="inlinecode"><span class="id" title="var">target_outputs</span></span> extracts the observable outputs of a target state;
+
+</li>
+<li> <span class="inlinecode"><span class="id" title="var">target_star</span></span> is the multi-step target execution relation;
+
+</li>
+<li> <span class="inlinecode"><span class="id" title="var">target_final</span></span> marks states considered final/halting. 
+
+</li>
+</ul>
+</div>
+<div class="code">
+&nbsp;&nbsp;<span class="id" title="keyword">Variables</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">initial_target_state</span> : <span class="id" title="var">function</span> → <span class="id" title="var">list</span> <span class="id" title="var">word</span> → <span class="id" title="var">list</span> <span class="id" title="var">word</span> → <span class="id" title="var">Asm.state</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">target_outputs</span> : <span class="id" title="var">Asm.state</span> → <span class="id" title="var">list</span> <span class="id" title="var">word</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">target_star</span> : <span class="id" title="var">Asm.state</span> → <span class="id" title="var">Asm.state</span> → <span class="id" title="keyword">Prop</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">target_final</span> : <span class="id" title="var">Asm.state</span> → <span class="id" title="keyword">Prop</span>).<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Structural properties of the target multi-step relation.
+      Reflexivity lets us keep the current state when no extra target steps
+      are needed; transitivity lets us concatenate simulation segments. 
+</div>
+<div class="code">
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">Axiom</span> <span class="id" title="var">gen_target_star_refl</span> : ∀ <span class="id" title="var">s</span>, <span class="id" title="var">target_star</span> <span class="id" title="var">s</span> <span class="id" title="var">s</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">Axiom</span> <span class="id" title="var">gen_target_star_trans</span> : ∀ <span class="id" title="var">s1</span> <span class="id" title="var">s2</span> <span class="id" title="var">s3</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_star</span> <span class="id" title="var">s1</span> <span class="id" title="var">s2</span> → <span class="id" title="var">target_star</span> <span class="id" title="var">s2</span> <span class="id" title="var">s3</span> → <span class="id" title="var">target_star</span> <span class="id" title="var">s1</span> <span class="id" title="var">s3</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Simulation relation connecting one source state with one target state
+      for a given source program. This is the central invariant carried
+      throughout the correctness argument. 
+</div>
+<div class="code">
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">Parameter</span> <span class="id" title="var">gen_match_state</span> : <span class="id" title="var">Bytecode.program</span> → <span class="id" title="var">source_state</span> → <span class="id" title="var">Asm.state</span> → <span class="id" title="keyword">Prop</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Initial-state compatibility: starting from source state <span class="inlinecode"><span class="id" title="var">st</span></span>, the target
+      state created from the compiled program is related by <span class="inlinecode"><span class="id" title="var">gen_match_state</span></span>. 
+</div>
+<div class="code">
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">Axiom</span> <span class="id" title="var">gen_match_state_initial</span> : ∀ (<span class="id" title="var">p</span> : <span class="id" title="var">Bytecode.program</span>) (<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">gen_match_state</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">initial_target_state</span> (<span class="id" title="var">transl_program</span> <span class="id" title="var">p</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">source_inputs</span> <span class="id" title="var">st</span>) (<span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span>)).<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Forward simulation for running steps: if source takes one running step,
+      the target can take zero or more steps to a new related target state. 
+</div>
+<div class="code">
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">Axiom</span> <span class="id" title="var">gen_match_state_step</span> : ∀ (<span class="id" title="var">p</span> : <span class="id" title="var">Bytecode.program</span>) (<span class="id" title="var">st</span> <span class="id" title="var">st'</span> : <span class="id" title="var">source_state</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">tgt</span> : <span class="id" title="var">Asm.state</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">gen_match_state</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span> <span class="id" title="var">tgt</span> → <span class="id" title="var">source_step</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span> = <span class="id" title="var">Running</span> <span class="id" title="var">st'</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;∃ <span class="id" title="var">tgt'</span>, <span class="id" title="var">target_star</span> <span class="id" title="var">tgt</span> <span class="id" title="var">tgt'</span> ∧ <span class="id" title="var">gen_match_state</span> <span class="id" title="var">p</span> <span class="id" title="var">st'</span> <span class="id" title="var">tgt'</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Observation agreement: any matched pair of states exposes the same
+      output sequence at the source and target levels. 
+</div>
+<div class="code">
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">Axiom</span> <span class="id" title="var">gen_match_state_outputs</span> : ∀ (<span class="id" title="var">p</span> : <span class="id" title="var">Bytecode.program</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>) (<span class="id" title="var">tgt</span> : <span class="id" title="var">Asm.state</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">gen_match_state</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span> <span class="id" title="var">tgt</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_outputs</span> <span class="id" title="var">tgt</span> = <span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Halt compatibility: when source halts in one step from a matched state,
+      the current target state is already final and observes the halted
+      source outputs. 
+</div>
+<div class="code">
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">Axiom</span> <span class="id" title="var">gen_match_state_halted</span> : ∀ (<span class="id" title="var">p</span> : <span class="id" title="var">Bytecode.program</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">st</span> <span class="id" title="var">st'</span> : <span class="id" title="var">source_state</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">r</span> : <span class="id" title="var">halt_reason</span>) (<span class="id" title="var">tgt</span> : <span class="id" title="var">Asm.state</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">gen_match_state</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span> <span class="id" title="var">tgt</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_step</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span> = <span class="id" title="var">Halted</span> <span class="id" title="var">r</span> <span class="id" title="var">st'</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_final</span> <span class="id" title="var">tgt</span> ∧ <span class="id" title="var">target_outputs</span> <span class="id" title="var">tgt</span> = <span class="id" title="var">source_outputs</span> <span class="id" title="var">st'</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Helper projection from a full source configuration to its underlying
+      <span class="inlinecode"><span class="id" title="var">source_state</span></span>. This forgets the halt reason, since output comparison
+      only depends on the embedded state fields. 
+</div>
+<div class="code">
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">configuration_to_state</span> (<span class="id" title="var">cfg</span> : <span class="id" title="var">configuration</span>) : <span class="id" title="var">source_state</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">cfg</span> <span class="id" title="keyword">with</span> <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">Running</span> <span class="id" title="var">st</span> ⇒ <span class="id" title="var">st</span> <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">Halted</span> <span class="id" title="var">_</span> <span class="id" title="var">st</span> ⇒ <span class="id" title="var">st</span> <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Executing <span class="inlinecode"><span class="id" title="var">run</span></span> from a halted configuration cannot change it, regardless
+      of available fuel. This lemma is used in the halted-start branch of the
+      main theorem. 
+</div>
+<div class="code">
+&nbsp;&nbsp;<span class="id" title="keyword">Lemma</span> <span class="id" title="var">gen_run_halted_idem</span> :<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;∀ (<span class="id" title="var">fuel</span> : <span class="id" title="var">nat</span>) (<span class="id" title="var">p</span> : <span class="id" title="var">Bytecode.program</span>) (<span class="id" title="var">r</span> : <span class="id" title="var">halt_reason</span>) (<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">run</span> <span class="id" title="var">fuel</span> <span class="id" title="var">p</span> (<span class="id" title="var">Halted</span> <span class="id" title="var">r</span> <span class="id" title="var">st</span>) = <span class="id" title="var">Halted</span> <span class="id" title="var">r</span> <span class="id" title="var">st</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Proof</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">induction</span> <span class="id" title="var">fuel</span> <span class="id" title="keyword">as</span> [|<span class="id" title="var">fuel</span> <span class="id" title="var">IH</span>]; <span class="id" title="var">cbn</span>; <span class="id" title="tactic">auto</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Qed</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Running-start case of the main correctness theorem.
+      If execution begins from <span class="inlinecode"><span class="id" title="var">Running</span></span> <span class="inlinecode"><span class="id" title="var">st</span></span> and reaches <span class="inlinecode"><span class="id" title="var">cfg'</span></span>, then the target
+      can reach a state whose observed outputs match <span class="inlinecode"><span class="id" title="var">cfg'</span></span>'s source outputs. 
+</div>
+<div class="code">
+&nbsp;&nbsp;<span class="id" title="keyword">Lemma</span> <span class="id" title="var">compiler_correct_gen_running</span> :<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;∀ (<span class="id" title="var">fuel</span> : <span class="id" title="var">nat</span>) (<span class="id" title="var">p</span> : <span class="id" title="var">Bytecode.program</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>) (<span class="id" title="var">cfg'</span> : <span class="id" title="var">configuration</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">run</span> <span class="id" title="var">fuel</span> <span class="id" title="var">p</span> (<span class="id" title="var">Running</span> <span class="id" title="var">st</span>) = <span class="id" title="var">cfg'</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;∃ (<span class="id" title="var">t'</span> : <span class="id" title="var">Asm.state</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_star</span> (<span class="id" title="var">initial_target_state</span> (<span class="id" title="var">transl_program</span> <span class="id" title="var">p</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">source_inputs</span> <span class="id" title="var">st</span>) (<span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span>)) <span class="id" title="var">t'</span> ∧<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_outputs</span> <span class="id" title="var">t'</span> = <span class="id" title="var">source_outputs</span> (<span class="id" title="var">configuration_to_state</span> <span class="id" title="var">cfg'</span>).<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Proof</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">intros</span> <span class="id" title="var">fuel</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span> <span class="id" title="var">cfg'</span> <span class="id" title="var">Hrun</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">assert</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">Hsim</span> :<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;∀ (<span class="id" title="var">fuel0</span> : <span class="id" title="var">nat</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">st0</span> : <span class="id" title="var">source_state</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">cfg0</span> : <span class="id" title="var">configuration</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">tgt</span> : <span class="id" title="var">Asm.state</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">gen_match_state</span> <span class="id" title="var">p</span> <span class="id" title="var">st0</span> <span class="id" title="var">tgt</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">run</span> <span class="id" title="var">fuel0</span> <span class="id" title="var">p</span> (<span class="id" title="var">Running</span> <span class="id" title="var">st0</span>) = <span class="id" title="var">cfg0</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;∃ <span class="id" title="var">t'</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_star</span> <span class="id" title="var">tgt</span> <span class="id" title="var">t'</span> ∧<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_outputs</span> <span class="id" title="var">t'</span> = <span class="id" title="var">source_outputs</span> (<span class="id" title="var">configuration_to_state</span> <span class="id" title="var">cfg0</span>)).<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;{<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">induction</span> <span class="id" title="var">fuel0</span> <span class="id" title="keyword">as</span> [|<span class="id" title="var">fuel0</span> <span class="id" title="var">IH</span>]; <span class="id" title="tactic">intros</span> <span class="id" title="var">st0</span> <span class="id" title="var">cfg0</span> <span class="id" title="var">tgt</span> <span class="id" title="var">Hmatch</span> <span class="id" title="var">Hrun0</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="id" title="var">cbn</span> <span class="id" title="tactic">in</span> <span class="id" title="var">Hrun0</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">inversion</span> <span class="id" title="var">Hrun0</span>; <span class="id" title="tactic">subst</span> <span class="id" title="var">cfg0</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">∃</span> <span class="id" title="var">tgt</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">split</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="id" title="tactic">apply</span> <span class="id" title="var">gen_target_star_refl</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="id" title="var">cbn</span>. <span class="id" title="tactic">eapply</span> <span class="id" title="var">gen_match_state_outputs</span>; <span class="id" title="tactic">eauto</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="id" title="var">cbn</span> <span class="id" title="tactic">in</span> <span class="id" title="var">Hrun0</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">remember</span> (<span class="id" title="var">source_step</span> <span class="id" title="var">p</span> <span class="id" title="var">st0</span>) <span class="id" title="keyword">as</span> <span class="id" title="var">first_step</span> <span class="id" title="var">eqn</span>:<span class="id" title="var">Hfirst</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">destruct</span> <span class="id" title="var">first_step</span> <span class="id" title="keyword">as</span> [<span class="id" title="var">st1</span> | <span class="id" title="var">r1</span> <span class="id" title="var">st1</span>].<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="id" title="tactic">assert</span> (<span class="id" title="var">Hrest</span> : <span class="id" title="var">run</span> <span class="id" title="var">fuel0</span> <span class="id" title="var">p</span> (<span class="id" title="var">Running</span> <span class="id" title="var">st1</span>) = <span class="id" title="var">cfg0</span>).<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{ <span class="id" title="tactic">rewrite</span> &lt;- <span class="id" title="var">Hrun0</span>. <span class="id" title="var">cbn</span>. <span class="id" title="tactic">rewrite</span> <span class="id" title="var">Hfirst</span>. <span class="id" title="tactic">reflexivity</span>. }<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">destruct</span> (<span class="id" title="var">gen_match_state_step</span> <span class="id" title="var">p</span> <span class="id" title="var">st0</span> <span class="id" title="var">st1</span> <span class="id" title="var">tgt</span> <span class="id" title="var">Hmatch</span> (<span class="id" title="var">eq_sym</span> <span class="id" title="var">Hfirst</span>))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">as</span> [<span class="id" title="var">tgt1</span> [<span class="id" title="var">Hstar1</span> <span class="id" title="var">Hmatch1</span>]].<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">destruct</span> (<span class="id" title="var">IH</span> <span class="id" title="var">st1</span> <span class="id" title="var">cfg0</span> <span class="id" title="var">tgt1</span> <span class="id" title="var">Hmatch1</span> <span class="id" title="var">Hrest</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">as</span> [<span class="id" title="var">t'</span> [<span class="id" title="var">Hstar2</span> <span class="id" title="var">Hout</span>]].<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">∃</span> <span class="id" title="var">t'</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">split</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;× <span class="id" title="tactic">eapply</span> <span class="id" title="var">gen_target_star_trans</span>; <span class="id" title="tactic">eauto</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;× <span class="id" title="tactic">exact</span> <span class="id" title="var">Hout</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="id" title="tactic">rewrite</span> <span class="id" title="var">gen_run_halted_idem</span> <span class="id" title="tactic">in</span> <span class="id" title="var">Hrun0</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">inversion</span> <span class="id" title="var">Hrun0</span>; <span class="id" title="tactic">subst</span> <span class="id" title="var">cfg0</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">pose</span> <span class="id" title="var">proof</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">gen_match_state_halted</span> <span class="id" title="var">p</span> <span class="id" title="var">st0</span> <span class="id" title="var">st1</span> <span class="id" title="var">r1</span> <span class="id" title="var">tgt</span> <span class="id" title="var">Hmatch</span> (<span class="id" title="var">eq_sym</span> <span class="id" title="var">Hfirst</span>))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">as</span> [<span class="id" title="var">_</span> <span class="id" title="var">Hout</span>].<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">∃</span> <span class="id" title="var">tgt</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">split</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;× <span class="id" title="tactic">apply</span> <span class="id" title="var">gen_target_star_refl</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;× <span class="id" title="tactic">exact</span> <span class="id" title="var">Hout</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;}<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">pose</span> <span class="id" title="var">proof</span> (<span class="id" title="var">gen_match_state_initial</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span>) <span class="id" title="keyword">as</span> <span class="id" title="var">Hinit</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">destruct</span> (<span class="id" title="var">Hsim</span> <span class="id" title="var">fuel</span> <span class="id" title="var">st</span> <span class="id" title="var">cfg'</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">initial_target_state</span> (<span class="id" title="var">transl_program</span> <span class="id" title="var">p</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">source_inputs</span> <span class="id" title="var">st</span>) (<span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span>))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Hinit</span> <span class="id" title="var">Hrun</span>) <span class="id" title="keyword">as</span> [<span class="id" title="var">t'</span> [<span class="id" title="var">Hstar</span> <span class="id" title="var">Hout</span>]].<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">∃</span> <span class="id" title="var">t'</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">split</span>; <span class="id" title="tactic">assumption</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Qed</span>.<br/>
+</div>
+
+<div class="doc">
+Main generic compiler-correctness statement. 
+      This theorem states that for any parsed bytecode program <span class="inlinecode"><span class="id" title="var">p</span></span>,
+      any source configuration <span class="inlinecode"><span class="id" title="var">cfg</span></span>, and any amount of fuel <span class="inlinecode"><span class="id" title="var">fuel</span></span>,
+      if the source machine runs for <span class="inlinecode"><span class="id" title="var">fuel</span></span> steps and ends in <span class="inlinecode"><span class="id" title="var">cfg'</span></span>,
+      then the compiled x86‑64 code, started with the input and output
+      vectors extracted from <span class="inlinecode"><span class="id" title="var">cfg</span></span>, will simulate that execution
+      (in zero or more target steps) to some target state <span class="inlinecode"><span class="id" title="var">t'</span></span> whose
+      output vector equals the source's final output vector.
+
+<div class="paragraph"> </div>
+
+      The proof splits on <span class="inlinecode"><span class="id" title="var">cfg</span></span>:
+<ul class="doclist">
+<li> running case: delegated to <span class="inlinecode"><span class="id" title="var">compiler_correct_gen_running</span></span>;
+
+</li>
+<li> halted case: source does not evolve, so initial target state already
+        satisfies the required output relation. 
+
+</li>
+</ul>
+</div>
+<div class="code">
+&nbsp;&nbsp;<span class="id" title="keyword">Theorem</span> <span class="id" title="var">compiler_correct</span> :<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;∀ (<span class="id" title="var">bytes</span> : <span class="id" title="var">list</span> <span class="id" title="var">Bytecode.byte</span>) (<span class="id" title="var">fuel</span> : <span class="id" title="var">nat</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">p</span> : <span class="id" title="var">Bytecode.program</span>) (<span class="id" title="var">cfg</span> <span class="id" title="var">cfg'</span> : <span class="id" title="var">configuration</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Bytecode.parse</span> <span class="id" title="var">bytes</span> = <span class="id" title="var">Bytecode.Parsed</span> <span class="id" title="var">p</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">run</span> <span class="id" title="var">fuel</span> <span class="id" title="var">p</span> <span class="id" title="var">cfg</span> = <span class="id" title="var">cfg'</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;∃ (<span class="id" title="var">t'</span> : <span class="id" title="var">Asm.state</span>),<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_star</span> (<span class="id" title="var">initial_target_state</span> (<span class="id" title="var">transl_program</span> <span class="id" title="var">p</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">source_inputs</span> (<span class="id" title="var">configuration_to_state</span> <span class="id" title="var">cfg</span>)) <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">source_outputs</span> (<span class="id" title="var">configuration_to_state</span> <span class="id" title="var">cfg</span>))) <span class="id" title="var">t'</span> ∧<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">target_outputs</span> <span class="id" title="var">t'</span> = <span class="id" title="var">source_outputs</span> (<span class="id" title="var">configuration_to_state</span> <span class="id" title="var">cfg'</span>).<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Proof</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">intros</span> <span class="id" title="var">bytes</span> <span class="id" title="var">fuel</span> <span class="id" title="var">p</span> <span class="id" title="var">cfg</span> <span class="id" title="var">cfg'</span> <span class="id" title="var">Hparse</span> <span class="id" title="var">Hrun</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">clear</span> <span class="id" title="var">Hparse</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">destruct</span> <span class="id" title="var">cfg</span> <span class="id" title="keyword">as</span> [<span class="id" title="var">st</span> | <span class="id" title="var">r</span> <span class="id" title="var">st</span>].<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;{ <span class="id" title="tactic">eapply</span> <span class="id" title="var">compiler_correct_gen_running</span>; <span class="id" title="tactic">eauto</span>. }<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;{ <span class="id" title="tactic">rewrite</span> <span class="id" title="var">gen_run_halted_idem</span> <span class="id" title="tactic">in</span> <span class="id" title="var">Hrun</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">inversion</span> <span class="id" title="var">Hrun</span>; <span class="id" title="tactic">subst</span> <span class="id" title="var">cfg'</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">∃</span> (<span class="id" title="var">initial_target_state</span> (<span class="id" title="var">transl_program</span> <span class="id" title="var">p</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">source_inputs</span> <span class="id" title="var">st</span>) (<span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span>)).<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">split</span>; [<span class="id" title="tactic">apply</span> <span class="id" title="var">gen_target_star_refl</span> |].<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">eapply</span> <span class="id" title="var">gen_match_state_outputs</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">apply</span> <span class="id" title="var">gen_match_state_initial</span>. }<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Qed</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">End</span> <span class="id" title="var">GenericCorrectness</span>.<br/>
+
+<br/>
+</div>
+</div>
+
+<div id="footer">
+<hr/><a href="index.html">Index</a><hr/>This page has been generated by <a href="http://rocq-prover.org/">coqdoc</a>
+</div>
+
+</div>
+
+</body>
+</html>

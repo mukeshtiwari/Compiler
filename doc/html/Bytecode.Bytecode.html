@@ -1,0 +1,585 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link href="coqdoc.css" rel="stylesheet" type="text/css" />
+<title>Bytecode.Bytecode</title>
+</head>
+
+<body>
+
+<div id="page">
+
+<div id="header">
+</div>
+
+<div id="main">
+
+<h1 class="libtitle">Library Bytecode.Bytecode</h1>
+
+<div class="code">
+</div>
+
+<div class="doc">
+<a id="lab1"></a><h1 class="section">The compiler problem: source bytecode and its semantics</h1>
+
+
+<div class="paragraph"> </div>
+
+    A compiler input is a list of bytes.  Parsing turns it into a list of
+    instructions whose program counters are byte offsets.  Execution uses a
+    stack of 256-bit words, a read-only input vector, and a mutable output
+    vector.  This file contains only those definitions; it mentions neither
+    x86 nor target memory.
+
+<div class="paragraph"> </div>
+
+    The byte encoding is:
+
+<div class="paragraph"> </div>
+
+<ul class="doclist">
+<li> <span class="inlinecode">00</span> STOP
+
+</li>
+<li> <span class="inlinecode">01</span> <span class="inlinecode"><span class="id" title="var">nn</span></span> LOAD input <span class="inlinecode"><span class="id" title="var">nn</span></span>
+
+</li>
+<li> <span class="inlinecode">02</span> <span class="inlinecode"><span class="id" title="var">nn</span></span> STORE output <span class="inlinecode"><span class="id" title="var">nn</span></span>
+
+</li>
+<li> <span class="inlinecode">03</span> POP
+
+</li>
+<li> <span class="inlinecode">04</span> ADD
+
+</li>
+<li> <span class="inlinecode">05</span> SUB
+
+</li>
+<li> <span class="inlinecode">06</span> DUP
+
+</li>
+<li> <span class="inlinecode">07</span> JUMPDEST
+
+</li>
+<li> <span class="inlinecode">08</span> JUMPI
+
+</li>
+</ul>
+
+<div class="paragraph"> </div>
+
+    LOAD and STORE operands are unsigned one-byte word indices.  Their bounds
+    are checked at execution time against the lengths of the input and output
+    vectors.  An out-of-bounds access halts before changing the operand stack.
+    Words are integers normalized modulo <span class="inlinecode">2^256</span>, and the stack limit is 1024
+    words.
+
+<div class="paragraph"> </div>
+
+    The source model stores words as mathematical integers.  The assignment's
+    C interface separately specifies that each vector element occupies 32
+    bytes in big-endian order and that <span class="inlinecode"><span class="id" title="var">insize</span></span> and <span class="inlinecode"><span class="id" title="var">outsize</span></span> count words, not
+    bytes. 
+</div>
+<div class="code">
+
+<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">Stdlib</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">ZArith</span> <span class="id" title="var">List</span> <span class="id" title="var">Bool</span> <span class="id" title="var">Lia</span> <span class="id" title="var">Logic.ProofIrrelevance</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Import</span> <span class="id" title="var">ListNotations</span>.<br/>
+<span class="id" title="keyword">Open</span> <span class="id" title="keyword">Scope</span> <span class="id" title="var">Z_scope</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+<a id="lab2"></a><h2 class="section">Syntax and parsing</h2>
+
+<div class="paragraph"> </div>
+
+ Raw source syntax uses an intrinsically bounded byte.  This definition is
+    part of the bytecode language; it is independent of both Jasmin words and
+    the target machine's memory representation. 
+</div>
+<div class="code">
+<span class="id" title="keyword">Module</span> <span class="id" title="var">Byte</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Record</span> <span class="id" title="var">t</span> : <span class="id" title="keyword">Type</span> := {<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">unsigned</span> : <span class="id" title="var">Z</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">unsigned_range</span> : 0 ≤ <span class="id" title="var">unsigned</span> &lt; 256<br/>
+&nbsp;&nbsp;}.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">modulus</span> : <span class="id" title="var">Z</span> := 256.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">max_unsigned</span> : <span class="id" title="var">Z</span> := 255.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">repr</span> (<span class="id" title="var">value</span> : <span class="id" title="var">Z</span>) : <span class="id" title="var">t</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Proof</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">refine</span> {| <span class="id" title="var">unsigned</span> := <span class="id" title="var">value</span> <span class="id" title="var">mod</span> <span class="id" title="var">modulus</span> |}.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">unfold</span> <span class="id" title="var">modulus</span>. <span class="id" title="tactic">apply</span> <span class="id" title="var">Z.mod_pos_bound</span>. <span class="id" title="var">lia</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Defined</span>.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Lemma</span> <span class="id" title="var">unsigned_repr</span> :<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">∀</span> <span class="id" title="var">value</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0 ≤ <span class="id" title="var">value</span> ≤ <span class="id" title="var">max_unsigned</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">unsigned</span> (<span class="id" title="var">repr</span> <span class="id" title="var">value</span>) = <span class="id" title="var">value</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Proof</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">intros</span> <span class="id" title="var">value</span> <span class="id" title="var">Hrange</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">change</span> (<span class="id" title="var">value</span> <span class="id" title="var">mod</span> 256 = <span class="id" title="var">value</span>).<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">apply</span> <span class="id" title="var">Z.mod_small</span>. <span class="id" title="tactic">unfold</span> <span class="id" title="var">max_unsigned</span> <span class="id" title="tactic">in</span> <span class="id" title="var">Hrange</span>. <span class="id" title="var">lia</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Qed</span>.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Lemma</span> <span class="id" title="var">eq</span> :<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">∀</span> <span class="id" title="tactic">left</span> <span class="id" title="tactic">right</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">unsigned</span> <span class="id" title="tactic">left</span> = <span class="id" title="var">unsigned</span> <span class="id" title="tactic">right</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">left</span> = <span class="id" title="tactic">right</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Proof</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">intros</span> [<span class="id" title="tactic">left</span> <span class="id" title="var">Hleft</span>] [<span class="id" title="tactic">right</span> <span class="id" title="var">Hright</span>] <span class="id" title="var">Hequal</span>; <span class="id" title="var">cbn</span> <span class="id" title="tactic">in</span> <span class="id" title="var">Hequal</span>; <span class="id" title="tactic">subst</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">f_equal</span>. <span class="id" title="tactic">apply</span> <span class="id" title="var">proof_irrelevance</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Qed</span>.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Lemma</span> <span class="id" title="var">repr_unsigned</span> :<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">∀</span> <span class="id" title="var">value</span>, <span class="id" title="var">repr</span> (<span class="id" title="var">unsigned</span> <span class="id" title="var">value</span>) = <span class="id" title="var">value</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Proof</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">intros</span> <span class="id" title="var">value</span>. <span class="id" title="tactic">apply</span> <span class="id" title="var">eq</span>. <span class="id" title="var">cbn</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">apply</span> <span class="id" title="var">Z.mod_small</span>. <span class="id" title="tactic">unfold</span> <span class="id" title="var">modulus</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">pose</span> <span class="id" title="var">proof</span> (<span class="id" title="var">unsigned_range</span> <span class="id" title="var">value</span>). <span class="id" title="var">lia</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Qed</span>.<br/>
+<span class="id" title="keyword">End</span> <span class="id" title="var">Byte</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Notation</span> <span class="id" title="var">byte</span> := <span class="id" title="var">Byte.t</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">byte_nat</span> (<span class="id" title="var">b</span> : <span class="id" title="var">byte</span>) : <span class="id" title="var">nat</span> := <span class="id" title="var">Z.to_nat</span> (<span class="id" title="var">Byte.unsigned</span> <span class="id" title="var">b</span>).<br/>
+
+<br/>
+<span class="id" title="keyword">Inductive</span> <span class="id" title="var">opcode</span> : <span class="id" title="keyword">Type</span> :=<br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpStop</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpLoad</span> (<span class="id" title="var">index</span> : <span class="id" title="var">nat</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpStore</span> (<span class="id" title="var">index</span> : <span class="id" title="var">nat</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpPop</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpAdd</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpSub</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpDup</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpJumpdest</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpJumpi</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">opcode_width</span> (<span class="id" title="var">op</span> : <span class="id" title="var">opcode</span>) : <span class="id" title="var">nat</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">op</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpLoad</span> <span class="id" title="var">_</span> | <span class="id" title="var">OpStore</span> <span class="id" title="var">_</span> ⇒ 2<br/>
+&nbsp;&nbsp;| <span class="id" title="var">_</span> ⇒ 1<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Record</span> <span class="id" title="var">instruction</span> : <span class="id" title="keyword">Type</span> := {<br/>
+&nbsp;&nbsp;<span class="id" title="var">instr_pc</span> : <span class="id" title="var">nat</span>;<br/>
+&nbsp;&nbsp;<span class="id" title="var">instr_opcode</span> : <span class="id" title="var">opcode</span>;<br/>
+&nbsp;&nbsp;<span class="id" title="var">instr_next</span> : <span class="id" title="var">nat</span><br/>
+}.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">make_instruction</span> (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>) (<span class="id" title="var">op</span> : <span class="id" title="var">opcode</span>) : <span class="id" title="var">instruction</span> :=<br/>
+&nbsp;&nbsp;{| <span class="id" title="var">instr_pc</span> := <span class="id" title="var">pc</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">instr_opcode</span> := <span class="id" title="var">op</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">instr_next</span> := (<span class="id" title="var">pc</span> + <span class="id" title="var">opcode_width</span> <span class="id" title="var">op</span>)%<span class="id" title="var">nat</span> |}.<br/>
+
+<br/>
+<span class="id" title="keyword">Inductive</span> <span class="id" title="var">parse_error</span> : <span class="id" title="keyword">Type</span> :=<br/>
+&nbsp;&nbsp;| <span class="id" title="var">UnknownOpcode</span> (<span class="id" title="var">pc</span> <span class="id" title="var">raw</span> : <span class="id" title="var">nat</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">TruncatedOperand</span> (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>).<br/>
+
+<br/>
+<span class="id" title="keyword">Inductive</span> <span class="id" title="var">parse_result</span> (<span class="id" title="var">A</span> : <span class="id" title="keyword">Type</span>) : <span class="id" title="keyword">Type</span> :=<br/>
+&nbsp;&nbsp;| <span class="id" title="var">Parsed</span> (<span class="id" title="var">value</span> : <span class="id" title="var">A</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">Rejected</span> (<span class="id" title="var">error</span> : <span class="id" title="var">parse_error</span>).<br/>
+
+<br/>
+<span class="id" title="keyword">Arguments</span> <span class="id" title="var">Parsed</span> {<span class="id" title="var">A</span>} <span class="id" title="var">_</span>.<br/>
+<span class="id" title="keyword">Arguments</span> <span class="id" title="var">Rejected</span> {<span class="id" title="var">A</span>} <span class="id" title="var">_</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">prepend_instruction</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">i</span> : <span class="id" title="var">instruction</span>) (<span class="id" title="var">result</span> : <span class="id" title="var">parse_result</span> (<span class="id" title="var">list</span> <span class="id" title="var">instruction</span>))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;: <span class="id" title="var">parse_result</span> (<span class="id" title="var">list</span> <span class="id" title="var">instruction</span>) :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">result</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">Parsed</span> <span class="id" title="var">code</span> ⇒ <span class="id" title="var">Parsed</span> (<span class="id" title="var">i</span> :: <span class="id" title="var">code</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">Rejected</span> <span class="id" title="var">error</span> ⇒ <span class="id" title="var">Rejected</span> <span class="id" title="var">error</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Inductive</span> <span class="id" title="var">operand_kind</span> : <span class="id" title="keyword">Type</span> := <span class="id" title="var">LoadOperand</span> | <span class="id" title="var">StoreOperand</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+<span class="inlinecode"><span class="id" title="var">ExpectOperand</span></span> <span class="inlinecode"><span class="id" title="var">pc</span></span> <span class="inlinecode"><span class="id" title="var">kind</span></span> records an opcode whose operand byte has not yet
+    been consumed.  Scanning one byte at a time keeps <span class="inlinecode"><span class="id" title="var">scan</span></span> structurally
+    recursive and makes a missing operand an explicit parse error. 
+</div>
+<div class="code">
+<span class="id" title="keyword">Inductive</span> <span class="id" title="var">scan_mode</span> : <span class="id" title="keyword">Type</span> :=<br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOperand</span> (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>) (<span class="id" title="var">kind</span> : <span class="id" title="var">operand_kind</span>).<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">mode_pc</span> (<span class="id" title="var">mode</span> : <span class="id" title="var">scan_mode</span>) : <span class="id" title="var">nat</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">mode</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOpcode</span> <span class="id" title="var">pc</span> | <span class="id" title="var">ExpectOperand</span> <span class="id" title="var">pc</span> <span class="id" title="var">_</span> ⇒ <span class="id" title="var">pc</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">consumed_opcode_bytes</span> (<span class="id" title="var">mode</span> : <span class="id" title="var">scan_mode</span>) : <span class="id" title="var">nat</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">mode</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOpcode</span> <span class="id" title="var">_</span> ⇒ 0<br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOperand</span> <span class="id" title="var">_</span> <span class="id" title="var">_</span> ⇒ 1<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Fixpoint</span> <span class="id" title="var">scan</span> (<span class="id" title="var">mode</span> : <span class="id" title="var">scan_mode</span>) (<span class="id" title="var">bytes</span> : <span class="id" title="var">list</span> <span class="id" title="var">byte</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;: <span class="id" title="var">parse_result</span> (<span class="id" title="var">list</span> <span class="id" title="var">instruction</span>) :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">mode</span>, <span class="id" title="var">bytes</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOpcode</span> <span class="id" title="var">_</span>, [] ⇒ <span class="id" title="var">Parsed</span> []<br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOperand</span> <span class="id" title="var">pc</span> <span class="id" title="var">_</span>, [] ⇒ <span class="id" title="var">Rejected</span> (<span class="id" title="var">TruncatedOperand</span> <span class="id" title="var">pc</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOpcode</span> <span class="id" title="var">pc</span>, <span class="id" title="var">opbyte</span> :: <span class="id" title="var">tail</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">byte_nat</span> <span class="id" title="var">opbyte</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| 0%<span class="id" title="var">nat</span> ⇒ <span class="id" title="var">prepend_instruction</span> (<span class="id" title="var">make_instruction</span> <span class="id" title="var">pc</span> <span class="id" title="var">OpStop</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">S</span> <span class="id" title="var">pc</span>)) <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| 1%<span class="id" title="var">nat</span> ⇒ <span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOperand</span> <span class="id" title="var">pc</span> <span class="id" title="var">LoadOperand</span>) <span class="id" title="var">tail</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| 2%<span class="id" title="var">nat</span> ⇒ <span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOperand</span> <span class="id" title="var">pc</span> <span class="id" title="var">StoreOperand</span>) <span class="id" title="var">tail</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| 3%<span class="id" title="var">nat</span> ⇒ <span class="id" title="var">prepend_instruction</span> (<span class="id" title="var">make_instruction</span> <span class="id" title="var">pc</span> <span class="id" title="var">OpPop</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">S</span> <span class="id" title="var">pc</span>)) <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| 4%<span class="id" title="var">nat</span> ⇒ <span class="id" title="var">prepend_instruction</span> (<span class="id" title="var">make_instruction</span> <span class="id" title="var">pc</span> <span class="id" title="var">OpAdd</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">S</span> <span class="id" title="var">pc</span>)) <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| 5%<span class="id" title="var">nat</span> ⇒ <span class="id" title="var">prepend_instruction</span> (<span class="id" title="var">make_instruction</span> <span class="id" title="var">pc</span> <span class="id" title="var">OpSub</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">S</span> <span class="id" title="var">pc</span>)) <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| 6%<span class="id" title="var">nat</span> ⇒ <span class="id" title="var">prepend_instruction</span> (<span class="id" title="var">make_instruction</span> <span class="id" title="var">pc</span> <span class="id" title="var">OpDup</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">S</span> <span class="id" title="var">pc</span>)) <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| 7%<span class="id" title="var">nat</span> ⇒ <span class="id" title="var">prepend_instruction</span> (<span class="id" title="var">make_instruction</span> <span class="id" title="var">pc</span> <span class="id" title="var">OpJumpdest</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">S</span> <span class="id" title="var">pc</span>)) <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| 8%<span class="id" title="var">nat</span> ⇒ <span class="id" title="var">prepend_instruction</span> (<span class="id" title="var">make_instruction</span> <span class="id" title="var">pc</span> <span class="id" title="var">OpJumpi</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">S</span> <span class="id" title="var">pc</span>)) <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">raw</span> ⇒ <span class="id" title="var">Rejected</span> (<span class="id" title="var">UnknownOpcode</span> <span class="id" title="var">pc</span> <span class="id" title="var">raw</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOperand</span> <span class="id" title="var">pc</span> <span class="id" title="var">LoadOperand</span>, <span class="id" title="var">operand</span> :: <span class="id" title="var">tail</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">prepend_instruction</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">make_instruction</span> <span class="id" title="var">pc</span> (<span class="id" title="var">OpLoad</span> (<span class="id" title="var">byte_nat</span> <span class="id" title="var">operand</span>)))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">pc</span> + 2)%<span class="id" title="var">nat</span>) <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">ExpectOperand</span> <span class="id" title="var">pc</span> <span class="id" title="var">StoreOperand</span>, <span class="id" title="var">operand</span> :: <span class="id" title="var">tail</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">prepend_instruction</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">make_instruction</span> <span class="id" title="var">pc</span> (<span class="id" title="var">OpStore</span> (<span class="id" title="var">byte_nat</span> <span class="id" title="var">operand</span>)))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> (<span class="id" title="var">pc</span> + 2)%<span class="id" title="var">nat</span>) <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Record</span> <span class="id" title="var">program</span> : <span class="id" title="keyword">Type</span> := {<br/>
+&nbsp;&nbsp;<span class="id" title="var">program_bytes</span> : <span class="id" title="var">list</span> <span class="id" title="var">byte</span>;<br/>
+&nbsp;&nbsp;<span class="id" title="var">program_code</span> : <span class="id" title="var">list</span> <span class="id" title="var">instruction</span><br/>
+}.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">parse</span> (<span class="id" title="var">bytes</span> : <span class="id" title="var">list</span> <span class="id" title="var">byte</span>) : <span class="id" title="var">parse_result</span> <span class="id" title="var">program</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">scan</span> (<span class="id" title="var">ExpectOpcode</span> 0) <span class="id" title="var">bytes</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">Parsed</span> <span class="id" title="var">code</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Parsed</span> {| <span class="id" title="var">program_bytes</span> := <span class="id" title="var">bytes</span>; <span class="id" title="var">program_code</span> := <span class="id" title="var">code</span> |}<br/>
+&nbsp;&nbsp;| <span class="id" title="var">Rejected</span> <span class="id" title="var">error</span> ⇒ <span class="id" title="var">Rejected</span> <span class="id" title="var">error</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+Program counters are offsets in the original byte string, not positions
+    in <span class="inlinecode"><span class="id" title="var">program_code</span></span>.  Consequently the instruction after LOAD or STORE is
+    two byte PCs later.  JUMPI accepts only a counter containing JUMPDEST. 
+</div>
+<div class="code">
+<span class="id" title="keyword">Fixpoint</span> <span class="id" title="var">instruction_at</span> (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>) (<span class="id" title="var">code</span> : <span class="id" title="var">list</span> <span class="id" title="var">instruction</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;: <span class="id" title="var">option</span> <span class="id" title="var">instruction</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">code</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| [] ⇒ <span class="id" title="var">None</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">i</span> :: <span class="id" title="var">tail</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">if</span> <span class="id" title="var">Nat.eqb</span> <span class="id" title="var">pc</span> (<span class="id" title="var">instr_pc</span> <span class="id" title="var">i</span>) <span class="id" title="keyword">then</span> <span class="id" title="var">Some</span> <span class="id" title="var">i</span> <span class="id" title="keyword">else</span> <span class="id" title="var">instruction_at</span> <span class="id" title="var">pc</span> <span class="id" title="var">tail</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">fetch</span> (<span class="id" title="var">p</span> : <span class="id" title="var">program</span>) (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>) : <span class="id" title="var">option</span> <span class="id" title="var">instruction</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="var">instruction_at</span> <span class="id" title="var">pc</span> (<span class="id" title="var">program_code</span> <span class="id" title="var">p</span>).<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">opcode_is_jumpdest</span> (<span class="id" title="var">op</span> : <span class="id" title="var">opcode</span>) : <span class="id" title="var">bool</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">op</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">OpJumpdest</span> ⇒ <span class="id" title="var">true</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">_</span> ⇒ <span class="id" title="var">false</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">is_jumpdest</span> (<span class="id" title="var">p</span> : <span class="id" title="var">program</span>) (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>) : <span class="id" title="var">bool</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">fetch</span> <span class="id" title="var">p</span> <span class="id" title="var">pc</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">Some</span> <span class="id" title="var">i</span> ⇒ <span class="id" title="var">opcode_is_jumpdest</span> (<span class="id" title="var">instr_opcode</span> <span class="id" title="var">i</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">None</span> ⇒ <span class="id" title="var">false</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+<a id="lab3"></a><h2 class="section">Machine state and execution</h2>
+
+</div>
+<div class="code">
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">word</span> : <span class="id" title="keyword">Type</span> := <span class="id" title="var">Z</span>.<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">word_modulus</span> : <span class="id" title="var">Z</span> := 2 ^ 256.<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">normalize</span> (<span class="id" title="var">w</span> : <span class="id" title="var">word</span>) : <span class="id" title="var">word</span> := <span class="id" title="var">w</span> <span class="id" title="var">mod</span> <span class="id" title="var">word_modulus</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">word_is_zero</span> (<span class="id" title="var">w</span> : <span class="id" title="var">word</span>) : <span class="id" title="var">bool</span> := <span class="id" title="var">Z.eqb</span> (<span class="id" title="var">normalize</span> <span class="id" title="var">w</span>) 0.<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">word_to_pc</span> (<span class="id" title="var">w</span> : <span class="id" title="var">word</span>) : <span class="id" title="var">nat</span> := <span class="id" title="var">Z.to_nat</span> (<span class="id" title="var">normalize</span> <span class="id" title="var">w</span>).<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+The head of <span class="inlinecode"><span class="id" title="var">source_stack</span></span> is its top.  Input is immutable; STORE replaces
+    one element of <span class="inlinecode"><span class="id" title="var">source_outputs</span></span>.  The lengths of both vectors remain
+    constant during execution. 
+</div>
+<div class="code">
+<span class="id" title="keyword">Record</span> <span class="id" title="var">source_state</span> : <span class="id" title="keyword">Type</span> := {<br/>
+&nbsp;&nbsp;<span class="id" title="var">source_pc</span> : <span class="id" title="var">nat</span>;<br/>
+&nbsp;&nbsp;<span class="id" title="var">source_stack</span> : <span class="id" title="var">list</span> <span class="id" title="var">word</span>;       </div>
+
+<div class="doc">
+The head is the top of the stack. 
+</div>
+<div class="code">
+&nbsp;&nbsp;<span class="id" title="var">source_inputs</span> : <span class="id" title="var">list</span> <span class="id" title="var">word</span>;<br/>
+&nbsp;&nbsp;<span class="id" title="var">source_outputs</span> : <span class="id" title="var">list</span> <span class="id" title="var">word</span><br/>
+}.<br/>
+
+<br/>
+<span class="id" title="keyword">Inductive</span> <span class="id" title="var">halt_reason</span> : <span class="id" title="keyword">Type</span> :=<br/>
+&nbsp;&nbsp;| <span class="id" title="var">HaltStop</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">HaltFallthrough</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">HaltStackUnderflow</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">HaltStackOverflow</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">HaltInvalidJump</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">HaltInputOutOfBounds</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">HaltOutputOutOfBounds</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Inductive</span> <span class="id" title="var">configuration</span> : <span class="id" title="keyword">Type</span> :=<br/>
+&nbsp;&nbsp;| <span class="id" title="var">Running</span> (<span class="id" title="var">state</span> : <span class="id" title="var">source_state</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">Halted</span> (<span class="id" title="var">reason</span> : <span class="id" title="var">halt_reason</span>) (<span class="id" title="var">state</span> : <span class="id" title="var">source_state</span>).<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">with_pc</span> (<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>) (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>) : <span class="id" title="var">source_state</span> :=<br/>
+&nbsp;&nbsp;{| <span class="id" title="var">source_pc</span> := <span class="id" title="var">pc</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_stack</span> := <span class="id" title="var">source_stack</span> <span class="id" title="var">st</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_inputs</span> := <span class="id" title="var">source_inputs</span> <span class="id" title="var">st</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_outputs</span> := <span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span> |}.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">with_stack</span> (<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>) (<span class="id" title="var">stack</span> : <span class="id" title="var">list</span> <span class="id" title="var">word</span>) : <span class="id" title="var">source_state</span> :=<br/>
+&nbsp;&nbsp;{| <span class="id" title="var">source_pc</span> := <span class="id" title="var">source_pc</span> <span class="id" title="var">st</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_stack</span> := <span class="id" title="var">stack</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_inputs</span> := <span class="id" title="var">source_inputs</span> <span class="id" title="var">st</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_outputs</span> := <span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span> |}.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">with_stack_pc</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>) (<span class="id" title="var">stack</span> : <span class="id" title="var">list</span> <span class="id" title="var">word</span>) (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>) : <span class="id" title="var">source_state</span> :=<br/>
+&nbsp;&nbsp;{| <span class="id" title="var">source_pc</span> := <span class="id" title="var">pc</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_stack</span> := <span class="id" title="var">stack</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_inputs</span> := <span class="id" title="var">source_inputs</span> <span class="id" title="var">st</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_outputs</span> := <span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span> |}.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">with_stack_outputs_pc</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>) (<span class="id" title="var">stack</span> <span class="id" title="var">outputs</span> : <span class="id" title="var">list</span> <span class="id" title="var">word</span>) (<span class="id" title="var">pc</span> : <span class="id" title="var">nat</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;: <span class="id" title="var">source_state</span> :=<br/>
+&nbsp;&nbsp;{| <span class="id" title="var">source_pc</span> := <span class="id" title="var">pc</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_stack</span> := <span class="id" title="var">stack</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_inputs</span> := <span class="id" title="var">source_inputs</span> <span class="id" title="var">st</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_outputs</span> := <span class="id" title="var">outputs</span> |}.<br/>
+
+<br/>
+<span class="id" title="keyword">Fixpoint</span> <span class="id" title="var">replace_nth</span> {<span class="id" title="var">A</span> : <span class="id" title="keyword">Type</span>}<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">index</span> : <span class="id" title="var">nat</span>) (<span class="id" title="var">value</span> : <span class="id" title="var">A</span>) (<span class="id" title="var">values</span> : <span class="id" title="var">list</span> <span class="id" title="var">A</span>) : <span class="id" title="var">option</span> (<span class="id" title="var">list</span> <span class="id" title="var">A</span>) :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">index</span>, <span class="id" title="var">values</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">O</span>, <span class="id" title="var">_</span> :: <span class="id" title="var">tail</span> ⇒ <span class="id" title="var">Some</span> (<span class="id" title="var">value</span> :: <span class="id" title="var">tail</span>)<br/>
+&nbsp;&nbsp;| <span class="id" title="var">S</span> <span class="id" title="var">index'</span>, <span class="id" title="var">head</span> :: <span class="id" title="var">tail</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">replace_nth</span> <span class="id" title="var">index'</span> <span class="id" title="var">value</span> <span class="id" title="var">tail</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">Some</span> <span class="id" title="var">tail'</span> ⇒ <span class="id" title="var">Some</span> (<span class="id" title="var">head</span> :: <span class="id" title="var">tail'</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">None</span> ⇒ <span class="id" title="var">None</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">_</span>, [] ⇒ <span class="id" title="var">None</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+The operand stack is limited to 1024 words. 
+</div>
+<div class="code">
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">stack_limit</span> (<span class="id" title="var">_</span> : <span class="id" title="var">program</span>) : <span class="id" title="var">nat</span> := 1024.<br/>
+
+<br/>
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">push</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">p</span> : <span class="id" title="var">program</span>) (<span class="id" title="var">next</span> : <span class="id" title="var">nat</span>) (<span class="id" title="var">value</span> : <span class="id" title="var">word</span>) (<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;: <span class="id" title="var">configuration</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">if</span> <span class="id" title="var">Nat.ltb</span> (<span class="id" title="var">length</span> (<span class="id" title="var">source_stack</span> <span class="id" title="var">st</span>)) (<span class="id" title="var">stack_limit</span> <span class="id" title="var">p</span>) <span class="id" title="keyword">then</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Running</span> (<span class="id" title="var">with_stack_pc</span> <span class="id" title="var">st</span> (<span class="id" title="var">normalize</span> <span class="id" title="var">value</span> :: <span class="id" title="var">source_stack</span> <span class="id" title="var">st</span>) <span class="id" title="var">next</span>)<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">else</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Halted</span> <span class="id" title="var">HaltStackOverflow</span> <span class="id" title="var">st</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+<span class="inlinecode"><span class="id" title="var">source_step</span></span> executes exactly one instruction from a running state.
+
+<div class="paragraph"> </div>
+
+<ul class="doclist">
+<li> LOAD pushes the indexed input word.  An invalid index halts without
+      changing the state.
+
+</li>
+<li> STORE first checks the output index, then pops one value and writes it.
+      An invalid index therefore takes precedence over stack underflow and
+      leaves both stack and output unchanged.
+
+</li>
+<li> ADD and SUB pop <span class="inlinecode"><span class="id" title="var">rhs</span></span> first and <span class="inlinecode"><span class="id" title="var">lhs</span></span> second, then push respectively
+      <span class="inlinecode"><span class="id" title="var">lhs</span></span> <span class="inlinecode">+</span> <span class="inlinecode"><span class="id" title="var">rhs</span></span> and <span class="inlinecode"><span class="id" title="var">lhs</span></span> <span class="inlinecode">-</span> <span class="inlinecode"><span class="id" title="var">rhs</span></span>, normalized modulo <span class="inlinecode">2^256</span>.
+
+</li>
+<li> JUMPI pops <span class="inlinecode"><span class="id" title="var">destination</span></span> first and <span class="inlinecode"><span class="id" title="var">condition</span></span> second.  A zero condition
+      falls through without validating <span class="inlinecode"><span class="id" title="var">destination</span></span>.  A nonzero condition
+      transfers only to a parsed JUMPDEST; an invalid target halts after the
+      two operands have been popped.
+
+</li>
+</ul>
+
+<div class="paragraph"> </div>
+
+    STOP, faults, and fetching outside the parsed code halt.  There is no
+    transition out of a <span class="inlinecode"><span class="id" title="var">Halted</span></span> configuration. 
+</div>
+<div class="code">
+<span class="id" title="keyword">Definition</span> <span class="id" title="var">source_step</span> (<span class="id" title="var">p</span> : <span class="id" title="var">program</span>) (<span class="id" title="var">st</span> : <span class="id" title="var">source_state</span>) : <span class="id" title="var">configuration</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">fetch</span> <span class="id" title="var">p</span> (<span class="id" title="var">source_pc</span> <span class="id" title="var">st</span>) <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">None</span> ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltFallthrough</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">Some</span> <span class="id" title="var">i</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">instr_opcode</span> <span class="id" title="var">i</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">OpStop</span> ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltStop</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">OpLoad</span> <span class="id" title="var">index</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">nth_error</span> (<span class="id" title="var">source_inputs</span> <span class="id" title="var">st</span>) <span class="id" title="var">index</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">Some</span> <span class="id" title="var">value</span> ⇒ <span class="id" title="var">push</span> <span class="id" title="var">p</span> (<span class="id" title="var">instr_next</span> <span class="id" title="var">i</span>) <span class="id" title="var">value</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">None</span> ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltInputOutOfBounds</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">OpStore</span> <span class="id" title="var">index</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">if</span> <span class="id" title="var">Nat.ltb</span> <span class="id" title="var">index</span> (<span class="id" title="var">length</span> (<span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span>)) <span class="id" title="keyword">then</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">source_stack</span> <span class="id" title="var">st</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| [] ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltStackUnderflow</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">value</span> :: <span class="id" title="var">rest</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">replace_nth</span> <span class="id" title="var">index</span> (<span class="id" title="var">normalize</span> <span class="id" title="var">value</span>) (<span class="id" title="var">source_outputs</span> <span class="id" title="var">st</span>) <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">Some</span> <span class="id" title="var">outputs</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Running</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">with_stack_outputs_pc</span> <span class="id" title="var">st</span> <span class="id" title="var">rest</span> <span class="id" title="var">outputs</span> (<span class="id" title="var">instr_next</span> <span class="id" title="var">i</span>))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">None</span> ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltOutputOutOfBounds</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">else</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Halted</span> <span class="id" title="var">HaltOutputOutOfBounds</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">OpPop</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">source_stack</span> <span class="id" title="var">st</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| [] ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltStackUnderflow</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">_</span> :: <span class="id" title="var">rest</span> ⇒ <span class="id" title="var">Running</span> (<span class="id" title="var">with_stack_pc</span> <span class="id" title="var">st</span> <span class="id" title="var">rest</span> (<span class="id" title="var">instr_next</span> <span class="id" title="var">i</span>))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">OpAdd</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">source_stack</span> <span class="id" title="var">st</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">rhs</span> :: <span class="id" title="var">lhs</span> :: <span class="id" title="var">rest</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">push</span> <span class="id" title="var">p</span> (<span class="id" title="var">instr_next</span> <span class="id" title="var">i</span>) (<span class="id" title="var">lhs</span> + <span class="id" title="var">rhs</span>) (<span class="id" title="var">with_stack</span> <span class="id" title="var">st</span> <span class="id" title="var">rest</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">_</span> ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltStackUnderflow</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">OpSub</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">source_stack</span> <span class="id" title="var">st</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">rhs</span> :: <span class="id" title="var">lhs</span> :: <span class="id" title="var">rest</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">push</span> <span class="id" title="var">p</span> (<span class="id" title="var">instr_next</span> <span class="id" title="var">i</span>) (<span class="id" title="var">lhs</span> - <span class="id" title="var">rhs</span>) (<span class="id" title="var">with_stack</span> <span class="id" title="var">st</span> <span class="id" title="var">rest</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">_</span> ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltStackUnderflow</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">OpDup</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">source_stack</span> <span class="id" title="var">st</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| [] ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltStackUnderflow</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">value</span> :: <span class="id" title="var">_</span> ⇒ <span class="id" title="var">push</span> <span class="id" title="var">p</span> (<span class="id" title="var">instr_next</span> <span class="id" title="var">i</span>) <span class="id" title="var">value</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">OpJumpdest</span> ⇒ <span class="id" title="var">Running</span> (<span class="id" title="var">with_pc</span> <span class="id" title="var">st</span> (<span class="id" title="var">instr_next</span> <span class="id" title="var">i</span>))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">OpJumpi</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">source_stack</span> <span class="id" title="var">st</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">destination</span> :: <span class="id" title="var">condition</span> :: <span class="id" title="var">rest</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">popped</span> := <span class="id" title="var">with_stack</span> <span class="id" title="var">st</span> <span class="id" title="var">rest</span> <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">if</span> <span class="id" title="var">word_is_zero</span> <span class="id" title="var">condition</span> <span class="id" title="keyword">then</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Running</span> (<span class="id" title="var">with_pc</span> <span class="id" title="var">popped</span> (<span class="id" title="var">instr_next</span> <span class="id" title="var">i</span>))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">else</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">destination_pc</span> := <span class="id" title="var">word_to_pc</span> <span class="id" title="var">destination</span> <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">if</span> <span class="id" title="var">is_jumpdest</span> <span class="id" title="var">p</span> <span class="id" title="var">destination_pc</span> <span class="id" title="keyword">then</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Running</span> (<span class="id" title="var">with_pc</span> <span class="id" title="var">popped</span> <span class="id" title="var">destination_pc</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">else</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Halted</span> <span class="id" title="var">HaltInvalidJump</span> <span class="id" title="var">popped</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">_</span> ⇒ <span class="id" title="var">Halted</span> <span class="id" title="var">HaltStackUnderflow</span> <span class="id" title="var">st</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Inductive</span> <span class="id" title="var">source_small_step</span> (<span class="id" title="var">p</span> : <span class="id" title="var">program</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;: <span class="id" title="var">configuration</span> → <span class="id" title="var">configuration</span> → <span class="id" title="keyword">Prop</span> :=<br/>
+&nbsp;&nbsp;| <span class="id" title="var">SourceStep</span> : <span class="id" title="keyword">∀</span> <span class="id" title="var">st</span> <span class="id" title="var">next</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_step</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span> = <span class="id" title="var">next</span> →<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">source_small_step</span> <span class="id" title="var">p</span> (<span class="id" title="var">Running</span> <span class="id" title="var">st</span>) <span class="id" title="var">next</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+<span class="inlinecode"><span class="id" title="var">run</span></span> <span class="inlinecode"><span class="id" title="var">fuel</span></span> <span class="inlinecode"><span class="id" title="var">p</span></span> <span class="inlinecode"><span class="id" title="var">current</span></span> executes at most <span class="inlinecode"><span class="id" title="var">fuel</span></span> source instructions.  Running
+    out of fuel returns the current configuration, which may still be
+    <span class="inlinecode"><span class="id" title="var">Running</span></span>; a <span class="inlinecode"><span class="id" title="var">Halted</span></span> configuration remains unchanged. 
+</div>
+<div class="code">
+<span class="id" title="keyword">Fixpoint</span> <span class="id" title="var">run</span> (<span class="id" title="var">fuel</span> : <span class="id" title="var">nat</span>) (<span class="id" title="var">p</span> : <span class="id" title="var">program</span>) (<span class="id" title="var">current</span> : <span class="id" title="var">configuration</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;: <span class="id" title="var">configuration</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">fuel</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">O</span> ⇒ <span class="id" title="var">current</span><br/>
+&nbsp;&nbsp;| <span class="id" title="var">S</span> <span class="id" title="var">fuel'</span> ⇒<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">current</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">Running</span> <span class="id" title="var">st</span> ⇒ <span class="id" title="var">run</span> <span class="id" title="var">fuel'</span> <span class="id" title="var">p</span> (<span class="id" title="var">source_step</span> <span class="id" title="var">p</span> <span class="id" title="var">st</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">Halted</span> <span class="id" title="var">_</span> <span class="id" title="var">_</span> ⇒ <span class="id" title="var">current</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+</div>
+</div>
+
+<div id="footer">
+<hr/><a href="index.html">Index</a><hr/>This page has been generated by <a href="http://rocq-prover.org/">coqdoc</a>
+</div>
+
+</div>
+
+</body>
+</html>

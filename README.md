@@ -8,9 +8,11 @@
 	- Compiler from parsed bytecode program to CompCert x86-64 Asm function.
 3. `src/Proofs/Proof.v`
 	- Main correctness theorem and proof skeleton (parametric target semantics).
-4. `src/Extraction/ExtractCompiler.v`
+4. `src/Proofs/CorrectnessStatements.v`
+	- Statement-only specification of the generic compiler-correctness theorem, separated from the proof terms.
+5. `src/Extraction/ExtractCompiler.v`
 	- Extraction entrypoint for emitting a concrete assembly artifact.
-5. `tools/emit_f.ml`
+6. `tools/emit_f.ml`
 	- OCaml emitter that consumes extracted compiler output and writes x86-64 assembly.
 
 ## What this adds for wrapper linkage
@@ -24,10 +26,8 @@ The project now includes a concrete artifact pipeline that generates an exported
 This makes the generated function directly linkable with the provided C++ wrapper.
 
 ## Build Rocq theories
-
-```bash
-dune build
-```
+1. From the source directory, run `cd coq-compcert.3.17/` and once you are inside the Compcert, run `./make`.
+2. Now run `dune build` from the source directory. 
 
 ## Generate Coqdoc HTML (one command)
 

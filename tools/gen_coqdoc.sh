@@ -34,6 +34,7 @@ coqdoc --html --utf8 --toc \
   src/Bytecode/Bytecode.v \
   src/Assembly/Assembly.v \
   src/Proofs/Proof.v \
+  src/Proofs/CorrectnessStatements.v \
   src/Extraction/ExtractCompiler.v
 
 echo "[3/3] Done"
