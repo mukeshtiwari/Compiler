@@ -10,13 +10,18 @@
 2. `src/Assembly/Assembly.v`
 	- Compiler from parsed bytecode program to CompCert x86-64 Asm function.
 3. `src/Proofs/Proof.v`
-	- Main correctness theorem and proof skeleton (parametric target semantics).
+	- Main correctness theorem and proof skeleton (parametric target semantics). The proof relies on a number of axioms that, ideally, should be proved. However, doing so would require considerable time and a deep understanding of CompCert's x86 memory model.
 4. `src/Proofs/CorrectnessStatements.v`
 	- Statement-only specification of the generic compiler-correctness theorem, separated from the proof terms.
 5. `src/Extraction/ExtractCompiler.v`
 	- Extraction entrypoint for emitting a concrete assembly artifact.
 6. `tools/emit_f.ml`
 	- OCaml emitter that consumes extracted compiler output and writes x86-64 assembly.
+
+## High-level Correctness Idea (Lockstep simulation)
+
+If a bytecode program p_bytecode and its compiled x86 counterpart p_x86 are executed from equivalent initial states, in particular with identical output vectors, then their output vectors remain identical at every step of the execution.
+
 
 ## What this adds for wrapper linkage
 
