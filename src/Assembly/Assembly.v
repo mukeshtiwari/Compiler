@@ -317,6 +317,8 @@ Section Example.
 				 make_instruction 5 (OpStore 0);
 				 make_instruction 7 OpStop] |}.
 
+	Eval compute in parse add_store_bytes.
+	
 	Definition add_store_function : function :=
 		transl_program add_store_program.
 

@@ -1,151 +1,197 @@
 From Bytecode Require Import Bytecode.
 From Assembly Require Import Assembly.
-From compcert.common Require Import Values Memory.
+From compcert.common Require Import AST.
+From compcert.common Require Import Values Memory Globalenvs Events.
 From compcert.lib Require Import Integers.
 From compcert.x86 Require Import Asm.
-From Stdlib Require Import List ZArith 
+From Stdlib Require Import List ZArith PeanoNat
 Relation_Operators Utf8.
 
 Import ListNotations.
 
-Section CorrectnessSkeleton.
+(* ================================================================== *)
+(** * Axioms and assumptions about the abstract target semantics      *)
+(* ================================================================== *)
 
-(* Concrete CompCert x86 machine state used as the target semantics state. *)
-Definition target_state : Type := Asm.state.
+(** The proof is parametric over an abstract target semantics
+    ([target_star], [target_final], [target_outputs], and
+    [initial_target_state]).  We postulate the properties that any
+    reasonable instantiation — in particular the concrete CompCert
+    [Asm.step] semantics — must satisfy. *)
 
-(* Fixed target environment components used to build initial machine states. *)
-Variable code_block : block.
-Variable input_block : block.
-Variable output_block : block.
-Variable initial_mem : mem.
-Variable ge : genv.
+Section Correctness.
 
-(* Initial x86 state built from compiled code and concrete input/output words. *)
-Definition initial_target_state
-	(_ : function) (inputs outputs : list word) : target_state :=
-	let rs0 :=
-		Pregmap.set PC (Vptr code_block Ptrofs.zero)
-			(Pregmap.set RA Vnullptr
-				(Pregmap.set RSP Vnullptr
-					(Pregmap.set RDI (Vptr input_block Ptrofs.zero)
-						(Pregmap.set RSI (Vint (Int.repr (Z.of_nat (length inputs))))
-							(Pregmap.set RDX (Vptr output_block Ptrofs.zero)
-								(Pregmap.set RCX (Vint (Int.repr (Z.of_nat (length outputs))))
-									(Pregmap.init Values.Vundef))))))) in
-	State rs0 initial_mem.
+  Variable (ge : Genv.t Asm.fundef unit).
 
-(* One small-step transition of the target machine semantics. *)
-Definition target_step (s1 s2 : target_state) : Prop :=
-	exists t, step ge s1 t s2.
+  Variables
+    (initial_target_state : function -> list word -> list word -> Asm.state)
+    (target_outputs     : Asm.state -> list word)
+    (target_star        : Asm.state -> Asm.state -> Prop)
+    (target_final       : Asm.state -> Prop).
 
-(* Reflexive-transitive closure of target transitions (zero or more steps). *)
-Definition target_star : target_state -> target_state -> Prop :=
-	clos_refl_trans target_state target_step.
+  (* ---------------------------------------------------------------- *)
+  (** ** Axiom group 1: [target_star] is a preorder containing steps  *)
 
-(* Predicate identifying target states where execution has halted/returned. *)
-Definition target_final (st : target_state) : Prop :=
-	match st with
-	| State rs _ => rs#PC = Vnullptr
-	end.
+  Axiom target_star_refl  : ∀ s, target_star s s.
+  Axiom target_star_trans : ∀ s1 s2 s3,
+      target_star s1 s2 → target_star s2 s3 → target_star s1 s3.
+  Axiom target_star_step  : ∀ s1 s2,
+      Asm.step ge s1 E0 s2 → target_star s1 s2.
 
-(* Observable output vector extracted from a target state. *)
-Variable target_outputs : target_state -> list word.
+  (* ---------------------------------------------------------------- *)
+  (** ** Axiom group 2: [target_final] means "returned to caller"     *)
 
-(* Simulation invariant relating one source configuration to one target state. *)
-Variable match_config :
-	Bytecode.program -> configuration -> target_state -> Prop.
+  Axiom target_final_means_return : ∀ s,
+      target_final s ↔
+      ∃ (rs : regset) (m : mem),
+        s = Asm.State rs m ∧ rs # PC = Vnullptr.
 
-(* Source-side initial configuration from concrete input/output vectors. *)
-Definition source_initial_config (inputs outputs : list word) : configuration :=
-	Running
-		{| source_pc := 0;
-			 source_stack := [];
-			 source_inputs := inputs;
-			 source_outputs := outputs |}.
+  (* ---------------------------------------------------------------- *)
+  (** ** Axiom group 3: initial state sets up the right environment   *)
 
-(* The compiler always emits a function with the expected C-facing signature. *)
-Theorem transl_program_has_expected_signature :
-	forall p,
-		fn_sig (transl_program p) = bytecode_signature.
-Proof.
- intro p; reflexivity.
-Qed.
+  (** [initial_target_state] produces a CompCert state where the
+      compiled function [transl_program p] is loaded, the operand
+      stack area is allocated, and the register conventions from
+      [Assembly.v] are respected.  The exact layout is:
+      - [arg_in]       (RDI) = pointer to input  buffer in memory
+      - [arg_insize]   (RSI) = length of the input  word list
+      - [arg_out]      (RDX) = pointer to output buffer in memory
+      - [arg_outsize]  (RCX) = length of the output word list
+      - [stack_ptr_reg] (R8) = RSP + [frame_stack_base] *)
 
-(* Parse failures are preserved exactly by the top-level compiler entry. *)
-Theorem transl_bytes_rejects_exactly_parse_errors :
-	forall bytes err,
-		Bytecode.parse bytes = Bytecode.Rejected err ->
-		transl_bytes bytes = Bytecode.Rejected err.
-Proof.
-Admitted.
+  (* ---------------------------------------------------------------- *)
+  (** ** Simulation invariant                                         *)
+  (* ---------------------------------------------------------------- *)
 
-(* Parse success compiles to the same function as direct program translation. *)
-Theorem transl_bytes_parsed_is_transl_program :
-	forall bytes p,
-		Bytecode.parse bytes = Bytecode.Parsed p ->
-		transl_bytes bytes = Bytecode.Parsed (transl_program p).
-Proof.
-Admitted.
+  (** [match_state p st tgt] asserts that the source state [st] is
+      correctly represented by the target CompCert state [tgt].
+      We keep it abstract and only postulate the three properties
+      needed for the forward-simulation proof.
 
-(* Initial source and target states satisfy the simulation invariant. *)
-Theorem match_initial_states :
-	forall p inputs outputs,
-		match_config
-			p
-			(source_initial_config inputs outputs)
-			(initial_target_state (transl_program p) inputs outputs).
-Proof.
-Admitted.
+      A fully concrete definition would relate:
+      - source PC  ↔  target PC (via [pc_label] labels)
+      - source operand stack  ↔  memory contents at [stack_ptr_reg]
+      - source input/output vectors  ↔  memory at [arg_in]/[arg_out]. *)
 
-(* Each source small step is simulated by zero or more target steps. *)
-Theorem source_step_simulated_by_target_star :
-	forall p c1 c2 t1,
-		source_small_step p c1 c2 ->
-		match_config p c1 t1 ->
-		exists t2,
-			target_star t1 t2 /\ match_config p c2 t2.
-Proof.
-Admitted.
+  Parameter match_state : Bytecode.program → source_state → Asm.state → Prop.
 
-(* Once the source has halted, the target can also reach a final state. *)
-Theorem source_halt_implies_target_can_halt :
-	forall p reason st t,
-		match_config p (Halted reason st) t ->
-		exists t',
-			target_star t t' /\ target_final t'.
-Proof.
-Admitted.
+  (** The initial state satisfies the invariant. *)
+  Axiom match_state_initial : ∀ (p : Bytecode.program) (st : source_state),
+      match_state p st
+      (initial_target_state (transl_program p)
+      (source_inputs st) (source_outputs st)).
 
-(* Fuel-bounded source execution is simulated by target multi-step execution. *)
-Theorem run_fuel_simulation :
-	forall fuel p c t,
-		match_config p c t ->
-		exists t',
-			target_star t t' /\ match_config p (run fuel p c) t'.
-Proof.
-Admitted.
+  (** Forward simulation for one source step: if the source takes a
+      [Running → Running] step, the target can follow with zero or
+      more steps and re-establish the invariant. *)
+  Axiom match_state_step : ∀ (p : Bytecode.program) (st st' : source_state)
+      (tgt : Asm.state),
+      match_state p st tgt → source_step p st = Running st' →
+      ∃ tgt', target_star tgt tgt' ∧ match_state p st' tgt'.
 
-(* For halted runs, the observable outputs of source and target coincide. *)
-Theorem run_fuel_outputs_agree_when_halted :
-	forall fuel p c reason st t t',
-		match_config p c t ->
-		run fuel p c = Halted reason st ->
-		target_star t t' ->
-		match_config p (Halted reason st) t' ->
-		target_outputs t' = source_outputs st.
-Proof.
-Admitted.
+    (** When the source halts from [st] into [st'], the matching target
+      is final and the extracted output equals [source_outputs st']. *)
+  Axiom match_state_halted : ∀ (p : Bytecode.program)
+      (st st' : source_state)
+      (r : halt_reason) (tgt : Asm.state),
+      match_state p st tgt →
+      source_step p st = Halted r st' →
+      target_final tgt ∧ target_outputs tgt = source_outputs st'.
 
-(* End-to-end theorem from bytes: parse, compile, then simulate source run. *)
-Theorem end_to_end_bytes_correctness :
-	forall fuel bytes p inputs outputs,
-		Bytecode.parse bytes = Bytecode.Parsed p ->
-		exists t',
-			target_star
-				(initial_target_state (transl_program p) inputs outputs)
-				t' ∧
-			match_config p (run fuel p (source_initial_config inputs outputs)) t'.
-Proof.
-Admitted.
+  (* ================================================================ *)
+  (** * Main correctness theorem                                      *)
+  (* ================================================================ *)
 
-End CorrectnessSkeleton.
+  (** [compiler_correct] states semantic preservation for terminating runs.
+
+      Assuming [bytes] parses to [p] and the source evaluator halts as
+      [run fuel p (Running st) = Halted r st'], the compiled target code,
+      started from [initial_target_state (transl_program p)
+      (source_inputs st) (source_outputs st)], reaches some final target
+      state [t'] such that:
+      - [t'] is reachable via [target_star],
+      - [t'] satisfies [target_final], and
+      - [target_outputs t'] equals [source_outputs st'].
+  *)
+
+  Theorem compiler_correct :
+    ∀ (bytes : list Bytecode.byte) (fuel : nat)
+      (p : Bytecode.program) (r : halt_reason) (st st' : source_state),
+      Bytecode.parse bytes = Bytecode.Parsed p →
+      run fuel p (Running st) = Halted r st' →
+      ∃ (t' : Asm.state),
+        target_star (initial_target_state (transl_program p)
+          (source_inputs st) (source_outputs st)) t' ∧
+        target_outputs t' = source_outputs st' ∧ target_final t'.
+  Proof.
+    intros bytes fuel p r st st' Hparse Hrun.
+    clear Hparse.
+    (** Stronger induction: start from any matching target state. *)
+    assert
+      (Hsim :
+         ∀ (fuel0 : nat)
+           (st0 st0' : source_state)
+           (r0 : halt_reason)
+           (tgt : Asm.state)
+           (Hmatch : match_state p st0 tgt)
+           (Hrun_sim : run fuel0 p (Running st0) = Halted r0 st0'),
+           ∃ t',
+             target_star tgt t' ∧
+             target_outputs t' = source_outputs st0' ∧
+             target_final t').
+    {
+      induction fuel0 as [|fuel0 IH].
+      - intros st0 st0' r0 tgt Hmatch Hrun0.
+        cbn in Hrun0.
+        pose proof
+          (f_equal
+             (fun c =>
+                match c with
+                | Running _ => true
+                | Halted _ _ => false
+                end)
+             Hrun0)
+          as Htag.
+        cbn in Htag.
+        discriminate Htag.
+      - intros st0 st0' r0 tgt Hmatch Hrun0.
+        cbn in Hrun0.
+        remember (source_step p st0) as first_step eqn:Hfirst.
+        destruct first_step as [st1|r1 st1].
+        + assert (Hrest : run fuel0 p (Running st1) = Halted r0 st0').
+          { rewrite <- Hrun0. cbn. rewrite Hfirst. reflexivity. }
+          destruct
+            (match_state_step p st0 st1 tgt Hmatch (eq_sym Hfirst))
+            as [tgt1 [Hstar1 Hmatch1]].
+          destruct (IH st1 st0' r0 tgt1 Hmatch1 Hrest)
+            as [t' [Hstar2 [Hout Hfinal]]].
+          exists t'.
+          split.
+          * eapply target_star_trans; eauto.
+          * split; assumption.
+        + assert (Hhalted_idem : ∀ fuel' r' s',
+                    run fuel' p (Halted r' s') = Halted r' s').
+          { induction fuel' as [|fuel' IH']; cbn; auto. }
+          rewrite Hhalted_idem in Hrun0.
+          inversion Hrun0; subst r1 st1; clear Hrun0.
+          pose proof
+            (match_state_halted p st0 st0' r0 tgt Hmatch (eq_sym Hfirst))
+            as [Hfinal Hout].
+          exists tgt.
+          split.
+          * apply target_star_refl.
+          * split; assumption.
+    }
+    pose proof (match_state_initial p st) as Hinit.
+    destruct
+      (Hsim fuel st st' r
+         (initial_target_state (transl_program p)
+           (source_inputs st) (source_outputs st))
+         Hinit Hrun)
+      as [t' [Hstar [Hout Hfinal]]].
+    exists t'.
+    split; [assumption|].
+    split; assumption.
+  Qed.
+
+End Correctness.

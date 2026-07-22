@@ -4,6 +4,18 @@
  (synopsis "Formalisation of Bytecode to x86")
  (modules (:standard))
  (theories Bytecode Stdlib)
+ (rocqdep_flags
+  (:standard
+	-R ../../coq-compcert.3.17/lib compcert.lib
+	-R ../../coq-compcert.3.17/common compcert.common
+	-R ../../coq-compcert.3.17/x86 compcert.x86
+	-R ../../coq-compcert.3.17/x86_64 compcert.x86_64
+	-R ../../coq-compcert.3.17/backend compcert.backend
+	-R ../../coq-compcert.3.17/cfrontend compcert.cfrontend
+	-R ../../coq-compcert.3.17/driver compcert.driver
+	-R ../../coq-compcert.3.17/cparser compcert.cparser
+	-R ../../coq-compcert.3.17/flocq Flocq
+	-R ../../coq-compcert.3.17/MenhirLib MenhirLib))
  (flags
   (:standard
 	-R ../../coq-compcert.3.17/lib compcert.lib
