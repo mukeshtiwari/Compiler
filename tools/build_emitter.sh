@@ -4,13 +4,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-mkdir -p _build/default/tools/generated tools/generated tools/bin
+mkdir -p tools/generated tools/bin
 
 echo "[1/3] Building extraction target"
 dune build src/Extraction/ExtractCompiler.vo
 
 echo "[2/3] Copying extracted compiler"
-cp _build/default/tools/generated/compiler_extracted.ml tools/generated/compiler_extracted.ml
+EXTRACTED_ML="$(find _build/default -name compiler_extracted.ml -print -quit)"
+if [[ -z "${EXTRACTED_ML}" ]]; then
+	echo "Could not find compiler_extracted.ml under _build/default" >&2
+	exit 1
+fi
+cp "$EXTRACTED_ML" tools/generated/compiler_extracted.ml
 
 echo "[3/3] Building emitter binary"
 ocamlc -c -o tools/generated/compiler_extracted.cmo tools/generated/compiler_extracted.ml

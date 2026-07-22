@@ -6,9 +6,10 @@ From compcert.common Require Import AST.
 Require Extraction.
 
 Extraction Language OCaml.
+Set Extraction Output Directory ".".
 
 (* Extract only the compiler entrypoint and the target Asm function view it returns. *)
-Extraction "tools/generated/compiler_extracted.ml"
+Extraction "compiler_extracted.ml"
   transl_bytes
   Asm.function
   Asm.code
