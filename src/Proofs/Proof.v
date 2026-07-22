@@ -72,8 +72,8 @@ Section GenericCorrectness.
       target_final tgt ∧ target_outputs tgt = source_outputs st'.
 
   (** Helper projection from a full source configuration to its underlying
-      [source_state]. This forgets the halt reason, since output comparison
-      only depends on the embedded state fields. *)
+      [source_state]. 
+  *)
   Definition configuration_to_state (cfg : configuration) : source_state :=
     match cfg with 
     | Running st => st 
@@ -153,6 +153,9 @@ Section GenericCorrectness.
     exists t'.
     split; assumption.
   Qed.
+
+
+
   (** Main generic compiler-correctness statement. 
       This theorem states that for any parsed bytecode program [p],
       any source configuration [cfg], and any amount of fuel [fuel],
@@ -161,12 +164,7 @@ Section GenericCorrectness.
       vectors extracted from [cfg], will simulate that execution
       (in zero or more target steps) to some target state [t'] whose
       output vector equals the source's final output vector.
-
-
-      The proof splits on [cfg]:
-      - running case: delegated to [compiler_correct_gen_running];
-      - halted case: source does not evolve, so initial target state already
-        satisfies the required output relation. *)
+  *)
   Theorem compiler_correct :
     ∀ (bytes : list Bytecode.byte) (fuel : nat)
       (p : Bytecode.program) (cfg cfg' : configuration),
