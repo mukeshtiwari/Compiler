@@ -28,48 +28,55 @@ Section GenericCorrectness.
     (target_star : Asm.state -> Asm.state -> Prop)
     (target_final : Asm.state -> Prop).
 
-    (** Structural properties of the target multi-step relation.
-      Reflexivity lets us keep the current state when no extra target steps
-      are needed; transitivity lets us concatenate simulation segments. *)
-    Axiom gen_target_star_refl : ∀ s, target_star s s.
-    Axiom gen_target_star_trans : ∀ s1 s2 s3,
-      target_star s1 s2 → target_star s2 s3 → target_star s1 s3.
+    (** Bundled simulation properties.
 
-    (** Simulation relation connecting one source state with one target state
-      for a given source program. This is the central invariant carried
-      throughout the correctness argument. *)
-    Parameter gen_match_state : Bytecode.program → source_state → Asm.state → Prop.
+        This record follows the pattern of CompCert's
+        [compcert.common.Smallstep.forward_simulation], specialized to the
+        bytecode → x86 setting: no event traces and no well-founded index
+        order are needed since the source semantics is deterministic and
+        event-free.  The seven fields together correspond to the standard
+        forward-simulation diagram where each source [Running] step is
+        matched by zero or more target steps, and halted/final states
+        agree on observable outputs. *)
+    Record simulation_properties : Type :=
+      {
+        sim_star_refl : ∀ s, target_star s s;
+        sim_star_trans : ∀ s1 s2 s3,
+          target_star s1 s2 → target_star s2 s3 → target_star s1 s3;
+        sim_match_state : Bytecode.program → source_state → Asm.state → Prop;
+        sim_match_initial : ∀ (p : Bytecode.program) (st : source_state),
+          sim_match_state p st
+            (initial_target_state (transl_program p)
+               (source_inputs st) (source_outputs st));
+        sim_match_step : ∀ (p : Bytecode.program) (st st' : source_state)
+          (tgt : Asm.state),
+          sim_match_state p st tgt →
+          source_step p st = Running st' →
+          ∃ tgt', target_star tgt tgt' ∧ sim_match_state p st' tgt';
+        sim_match_outputs : ∀ (p : Bytecode.program)
+          (st : source_state) (tgt : Asm.state),
+          sim_match_state p st tgt →
+          target_outputs tgt = source_outputs st;
+        sim_match_halted : ∀ (p : Bytecode.program)
+          (st st' : source_state)
+          (r : halt_reason) (tgt : Asm.state),
+          sim_match_state p st tgt →
+          source_step p st = Halted r st' →
+          target_final tgt ∧ target_outputs tgt = source_outputs st';
+      }.
 
-    (** Initial-state compatibility: starting from source state [st], the target
-      state created from the compiled program is related by [gen_match_state]. *)
-    Axiom gen_match_state_initial : ∀ (p : Bytecode.program) (st : source_state),
-      gen_match_state p st
-      (initial_target_state (transl_program p)
-      (source_inputs st) (source_outputs st)).
+    (** Single hypothesis that bundles all simulation axioms.
+        Concrete backends must provide a value of this record type. *)
+    Variable sim_props : simulation_properties.
 
-    (** Forward simulation for running steps: if source takes one running step,
-      the target can take zero or more steps to a new related target state. *)
-    Axiom gen_match_state_step : ∀ (p : Bytecode.program) (st st' : source_state)
-      (tgt : Asm.state),
-      gen_match_state p st tgt → source_step p st = Running st' →
-      ∃ tgt', target_star tgt tgt' ∧ gen_match_state p st' tgt'.
-
-    (** Observation agreement: any matched pair of states exposes the same
-      output sequence at the source and target levels. *)
-    Axiom gen_match_state_outputs : ∀ (p : Bytecode.program)
-      (st : source_state) (tgt : Asm.state),
-      gen_match_state p st tgt →
-      target_outputs tgt = source_outputs st.
-
-    (** Halt compatibility: when source halts in one step from a matched state,
-      the current target state is already final and observes the halted
-      source outputs. *)
-    Axiom gen_match_state_halted : ∀ (p : Bytecode.program)
-      (st st' : source_state)
-      (r : halt_reason) (tgt : Asm.state),
-      gen_match_state p st tgt →
-      source_step p st = Halted r st' →
-      target_final tgt ∧ target_outputs tgt = source_outputs st'.
+    (** Convenience bindings — the rest of the file uses these names. *)
+    Let gen_target_star_refl   := sim_props.(sim_star_refl).
+    Let gen_target_star_trans  := sim_props.(sim_star_trans).
+    Let gen_match_state        := sim_props.(sim_match_state).
+    Let gen_match_state_initial := sim_props.(sim_match_initial).
+    Let gen_match_state_step   := sim_props.(sim_match_step).
+    Let gen_match_state_outputs := sim_props.(sim_match_outputs).
+    Let gen_match_state_halted := sim_props.(sim_match_halted).
 
   (** Helper projection from a full source configuration to its underlying
       [source_state]. 
