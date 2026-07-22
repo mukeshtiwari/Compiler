@@ -20,7 +20,20 @@
 
 ## High-level Correctness Idea (Lockstep simulation)
 
-If a bytecode program p_bytecode and its compiled x86 counterpart p_x86 are executed from equivalent initial states, in particular with identical output vectors, then their output vectors remain identical at every step of the execution.
+If a bytecode program p_bytecode and its compiled x86 counterpart p_x86 are executed from equivalent initial states, then their output vectors remain identical at every step of the execution (since input vectors are immutable, there is no need to compare them at each step).
+
+```OCaml
+Theorem compiler_correct :
+    ∀ (bytes : list Bytecode.byte) (fuel : nat)
+      (p : Bytecode.program) (cfg cfg' : configuration),
+      Bytecode.parse bytes = Bytecode.Parsed p →
+      run fuel p cfg = cfg' →
+      ∃ (t' : Asm.state),
+        target_star (initial_target_state (transl_program p)
+        (source_inputs (configuration_to_state cfg)) 
+        (source_outputs (configuration_to_state cfg))) t' ∧
+        target_outputs t' = source_outputs (configuration_to_state cfg').
+```
 
 
 ## What this adds for wrapper linkage
