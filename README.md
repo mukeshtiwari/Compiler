@@ -29,6 +29,23 @@ This makes the generated function directly linkable with the provided C++ wrappe
 dune build
 ```
 
+## Generate Coqdoc HTML (one command)
+
+```bash
+make doc
+```
+
+This generates documentation for the main project files into `doc/html/`.
+
+## Generate CompCert Coqdoc HTML
+
+```bash
+make doc-compcert
+```
+
+This delegates to CompCert's existing documentation target and writes under
+`coq-compcert.3.17/doc/html/`.
+
 ## Build the emitter tool
 
 ```bash
