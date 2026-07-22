@@ -1,5 +1,8 @@
 # Verified Bytecode Compiler (Rocq + x86-64)
 
+## Time Spent 
+1. Actual human time spent 7 hours (Agents took more time).
+
 ## Reading order
 
 1. `src/Bytecode/Bytecode.v`
