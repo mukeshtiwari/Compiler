@@ -117,24 +117,5 @@ int main(int const argc, char const* argv[]) {
 
 ---
 
-## Time Commitment
 
-As this is quite an involved effort, we will pay you **$75/hour** for up to **8 hours**. Although you should not spend more than 8 hours in total on this, your agent may spend more time working completely on its own. You must carefully review your agent's work, especially the compiler implementation and the statements of correctness theorems before submitting.
-
----
-
-## Deliverables
-
-Please submit:
-
-1. Your Rocq source files, compiler, and checked proof.
-2. A short **README** explaining the reading order for the files, especially the file containing the compiler and the file containing the correctness statements.
-3. Focused tests or examples you used to validate generated code.
-4. Complete AI or coding‑agent session transcript(s).
-5. The time spent and your preferred payment details.
-
-If you have any questions, please let `recruiting@category.xyz` know.
-
-Thank you for your time and effort!  
-— **The Category Labs Team**
 ```
